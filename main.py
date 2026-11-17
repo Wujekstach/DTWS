@@ -4,8 +4,10 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 import sys
+from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
+import win32com.client as win32
 import win32com.client as win32
 from dotenv import set_key
 
@@ -30,6 +32,20 @@ SCREENSHOT_DIR.mkdir(exist_ok=True)
 
 BROWSER_PROFILE = BASE_DIR / "browser_profile"
 
+NEWS_RULES = {
+    "System maintenance": "IMPORTANT: System maintenance has been announced!",
+    "Licytacja": "WARNING: Wspomniano licytacje!"
+}
+
+def check_for_news(page):
+    page_text = page.locator("body").inner_text()
+
+    for keyword, email_message in NEWS_RULES.items():
+        if keyword.lower() in page_text.lower():
+            print(f"News detected: {keyword}")
+            return email_message
+
+    return None
 
 def check_subscription_emails():
     outlook = win32.Dispatch("Outlook.Application")
@@ -52,8 +68,8 @@ def check_subscription_emails():
     ]
     
     ALLOWED_DOMAINS = [
-        "@test.pl",
-        "@test.de"
+        "@t-mobile.pl",
+        "@telekom.de"
     ]
     changed = False
 
@@ -105,6 +121,8 @@ def check_subscription_emails():
 
     return recipients
 
+
+
 def take_screenshot():
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     screenshot_path = SCREENSHOT_DIR / f"screenshot_{timestamp}.png"
@@ -135,6 +153,9 @@ def take_screenshot():
         else:
             print("No notification banner found")
             
+
+        news_message = check_for_news(page)
+        
         page.screenshot(
             path=str(screenshot_path),
             full_page=True
@@ -142,18 +163,25 @@ def take_screenshot():
 
         context.close()
 
-    return screenshot_path
+    return screenshot_path, news_message
 
 
-def send_email(screenshot_path):
-    if not EMAIL_RECIPIENTS:
+def send_email(screenshot_path, news_message=None):
+
+    # Read the latest recipient list
+    recipients = [
+        email.strip()
+        for email in os.getenv("EMAIL_RECIPIENTS", "").split(",")
+        if email.strip()
+    ]
+
+    if not recipients:
         raise ValueError("No email recipients configured in .env")
 
     outlook = win32.Dispatch("Outlook.Application")
-
     mail = outlook.CreateItem(0)
 
-    mail.To = "; ".join(EMAIL_RECIPIENTS)
+    mail.To = "; ".join(recipients)
     mail.Subject = f"Daily T-Wall Screenshot - {datetime.now():%Y-%m-%d}"
 
     mail.Body = (
@@ -161,8 +189,10 @@ def send_email(screenshot_path):
         f"Generated: {datetime.now():%Y-%m-%d %H:%M:%S}"
     )
 
-    mail.Attachments.Add(str(screenshot_path.resolve()))
+    if news_message:
+        mail.Body += f"\n\n{news_message}"
 
+    mail.Attachments.Add(str(screenshot_path.resolve()))
     mail.Send()
 
     print("Email sent successfully!")
@@ -186,8 +216,8 @@ def main():
         return
     check_subscription_emails()
 
-    screenshot = take_screenshot()
-    send_email(screenshot)
+    screenshot, news_message = take_screenshot()
+    send_email(screenshot, news_message)
 
     cleanup_old_screenshots(keep=5)
 
