@@ -52,8 +52,8 @@ def check_subscription_emails():
     ]
     
     ALLOWED_DOMAINS = [
-        "@t-mobile.pl",
-        "@telekom.de"
+        "@test.pl",
+        "@test.de"
     ]
     changed = False
 
