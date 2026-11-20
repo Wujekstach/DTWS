@@ -4,12 +4,11 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 import sys
-from pathlib import Path
 from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 import win32com.client as win32
-import win32com.client as win32
 from dotenv import set_key
+from PIL import Image
 
 load_dotenv()
 
@@ -156,10 +155,12 @@ def take_screenshot():
 
         news_message = check_for_news(page)
         
-        page.screenshot(
-            path=str(screenshot_path),
-            full_page=True
-        )
+        page.screenshot(path=screenshot_path, full_page=True)
+        
+        # Crop to the top 2750 pixels
+        with Image.open(screenshot_path) as img:
+            cropped = img.crop((0, 0, img.width, 2750))
+            cropped.save(screenshot_path)
 
         context.close()
 
@@ -181,7 +182,9 @@ def send_email(screenshot_path, news_message=None):
     outlook = win32.Dispatch("Outlook.Application")
     mail = outlook.CreateItem(0)
 
-    mail.To = "; ".join(recipients)
+    mail.To = ""
+    mail.BCC = "; ".join(recipients)
+    
     mail.Subject = f"Daily T-Wall Screenshot - {datetime.now():%Y-%m-%d}"
 
     mail.Body = (
@@ -210,12 +213,12 @@ def cleanup_old_screenshots(keep=10):
         print(f"Deleted old screenshot: {old_file.name}")
 
 def main():
+    check_subscription_emails()
+    
     # Skip weekends (Saturday = 5, Sunday = 6)
     if datetime.today().weekday() >= 5:
         print("Weekend detected. Skipping execution.")
         return
-    check_subscription_emails()
-
     screenshot, news_message = take_screenshot()
     send_email(screenshot, news_message)
 
